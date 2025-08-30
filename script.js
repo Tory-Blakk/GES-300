@@ -2821,329 +2821,440 @@
     ];
 
     // Initialize variables
-    let currentQuestion = 0;
-    let userAnswers = Array(quizQuestions.length).fill(null);
-    let score = 0;
-    let isLearningMode = false;
-    let quizSubmitted = false;
-    let darkMode = false;
 
-    // DOM Elements
-    const questionText = document.getElementById('question-text');
-    const optionsContainer = document.getElementById('options-container');
-    const questionNumbersContainer = document.getElementById('question-numbers');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
-    const submitBtn = document.getElementById('submit-btn');
-    const currentElement = document.getElementById('current');
-    const totalElement = document.getElementById('total');
-    const scoreValue = document.getElementById('score-value');
-    const maxScore = document.getElementById('max-score');
-    const resultsContainer = document.getElementById('results-container');
-    const finalScore = document.getElementById('final-score');
-    const totalQuestions = document.getElementById('total-questions');
-    const attempted = document.getElementById('attempted');
-    const correctCount = document.getElementById('correct-count');
-    const incorrectCount = document.getElementById('incorrect-count');
-    const reviewQuestions = document.getElementById('review-questions');
-    const scoreCircle = document.getElementById('score-circle');
-    const feedback = document.getElementById('feedback');
-    const clearBtn = document.getElementById('clear-btn');
-    const resetBtn = document.getElementById('reset-btn');
-    const quizModeBtn = document.getElementById('quiz-mode');
-    const learningModeBtn = document.getElementById('learning-mode');
-    const themeToggle = document.getElementById('theme-toggle');
-    const answeredCountEl = document.getElementById('answered-count');
-    const totalAnsweredEl = document.getElementById('total-answered');
-    const progressBar = document.getElementById('progress-bar');
-    const progressPercent = document.getElementById('progress-percent');
-    const answeredSummary = document.getElementById('answered-summary');
+// ================== State Variables ==================
+let activeQuestions = [];
+let chosenCount = 0;
+let examMode = false;
+let currentQuestion = 0;
+let userAnswers = [];
+let score = 0;
+let isLearningMode = false;
+let quizSubmitted = false;
+let darkMode = false;
+let timerInterval;
 
-    // Initialize quiz
-    function initQuiz() {
-        const savedProgress = localStorage.getItem('quizProgress');
-        if (savedProgress) {
-            const progress = JSON.parse(savedProgress);
-            currentQuestion = progress.currentQuestion || 0;
-            userAnswers = progress.userAnswers || Array(quizQuestions.length).fill(null);
-            score = progress.score || 0;
-            isLearningMode = progress.isLearningMode || false;
-            quizSubmitted = progress.quizSubmitted || false;
-            darkMode = progress.darkMode || false;
+// DOM elements
+const questionText = document.getElementById("question-text");
+const optionsContainer = document.getElementById("options-container");
+const questionNumbersContainer = document.getElementById("question-numbers");
+const prevBtn = document.getElementById("prev-btn");
+const nextBtn = document.getElementById("next-btn");
+const submitBtn = document.getElementById("submit-btn");
+const currentElement = document.getElementById("current");
+const totalElement = document.getElementById("total");
+const scoreValue = document.getElementById("score-value");
+const maxScore = document.getElementById("max-score");
+const resultsContainer = document.getElementById("results-container");
+const finalScore = document.getElementById("final-score");
+const totalQuestions = document.getElementById("total-questions");
+const attempted = document.getElementById("attempted");
+const correctCount = document.getElementById("correct-count");
+const incorrectCount = document.getElementById("incorrect-count");
+const reviewQuestions = document.getElementById("review-questions");
+const scoreCircle = document.getElementById("score-circle");
+const feedback = document.getElementById("feedback");
+const clearBtn = document.getElementById("clear-btn");
+const resetBtn = document.getElementById("reset-btn");
+const quizModeBtn = document.getElementById("quiz-mode");
+const learningModeBtn = document.getElementById("learning-mode");
+const themeToggle = document.getElementById("theme-toggle");
+const answeredCountEl = document.getElementById("answered-count");
+const totalAnsweredEl = document.getElementById("total-answered");
+const progressBar = document.getElementById("progress-bar");
+const progressPercent = document.getElementById("progress-percent");
+const answeredSummary = document.getElementById("answered-summary");
+const timerEl = document.getElementById("timer");
+const timeLeftEl = document.getElementById("time-left");
 
-            if (darkMode) {
-                document.body.classList.add('dark-mode');
-                themeToggle.textContent = '☀️';
-            }
-            if (isLearningMode) {
-                quizModeBtn.classList.remove('active');
-                learningModeBtn.classList.add('active');
-            }
-        }
+// ================== Start Screen ==================
+document.getElementById("start-btn").addEventListener("click", () => {
+  const count = parseInt(document.getElementById("question-count").value);
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  chosenCount = Math.min(count, quizQuestions.length);
+  examMode = mode === "exam";
 
-        totalElement.textContent = quizQuestions.length;
-        maxScore.textContent = quizQuestions.length;
-        totalQuestions.textContent = quizQuestions.length;
-        totalAnsweredEl.textContent = quizQuestions.length;
+  activeQuestions = [...quizQuestions]
+    .sort(() => 0.5 - Math.random())
+    .slice(0, chosenCount);
+  userAnswers = Array(chosenCount).fill(null);
+  score = 0;
+  currentQuestion = 0;
+  quizSubmitted = false;
 
-        generateQuestionNumbers();
-        loadQuestion(currentQuestion);
-        updateScoreDisplay();
-        updateProgress();
+  document.getElementById("start-screen").style.display = "none";
+  document.querySelector(".quiz-info").style.display = "flex";
+  document.querySelector(".main-content").style.display = "flex";
+  document.querySelector(".progress-wrap").style.display = "block";
+  document.querySelector(".mode-toggle").style.display = examMode ? "none" : "flex";
 
-        if (quizSubmitted) showResults();
-    }
+  totalElement.textContent = chosenCount;
+  maxScore.textContent = chosenCount;
+  totalQuestions.textContent = chosenCount;
+  totalAnsweredEl.textContent = chosenCount;
 
-    function generateQuestionNumbers() {
-        questionNumbersContainer.innerHTML = '';
-        quizQuestions.forEach((_, index) => {
-            const numberElement = document.createElement('div');
-            numberElement.className = 'question-number';
-            numberElement.textContent = index + 1;
-            numberElement.addEventListener('click', () => {
-                if (!quizSubmitted) {
-                    currentQuestion = index;
-                    loadQuestion(currentQuestion);
-                }
-            });
-            if (userAnswers[index] !== null) numberElement.classList.add('answered');
-            if (index === currentQuestion) numberElement.classList.add('current');
-            questionNumbersContainer.appendChild(numberElement);
-        });
-    }
+  generateQuestionNumbers();
+  loadQuestion(0);
+  updateProgress();
 
-    function loadQuestion(index) {
-        if (index < 0 || index >= quizQuestions.length) return;
-        currentQuestion = index;
-        currentElement.textContent = index + 1;
-        const question = quizQuestions[index];
-        questionText.textContent = question.question;
-        optionsContainer.innerHTML = '';
-
-        question.options.forEach((option, optionIndex) => {
-            const optionElement = document.createElement('div');
-            optionElement.className = 'option';
-            optionElement.textContent = `${String.fromCharCode(65 + optionIndex)}) ${option}`;
-            optionElement.dataset.value = String.fromCharCode(65 + optionIndex);
-
-            if (userAnswers[index] === optionElement.dataset.value) {
-                optionElement.classList.add('selected');
-            }
-
-            optionElement.addEventListener('click', () => {
-                if (quizSubmitted) return;
-                document.querySelectorAll('.option').forEach(opt => opt.classList.remove('selected'));
-                optionElement.classList.add('selected');
-                userAnswers[index] = optionElement.dataset.value;
-                updateQuestionNumbers();
-                updateProgress();
-                if (isLearningMode) checkAnswer(index, optionElement.dataset.value);
-                saveProgress();
-            });
-
-            optionsContainer.appendChild(optionElement);
-        });
-
-        prevBtn.disabled = index === 0;
-        nextBtn.disabled = index === quizQuestions.length - 1;
-        updateQuestionNumbers();
-        feedback.style.display = 'none';
-    }
-
-    function updateQuestionNumbers() {
-        const questionNumbers = document.querySelectorAll('.question-number');
-        questionNumbers.forEach((number, index) => {
-            number.classList.remove('current', 'answered');
-            if (index === currentQuestion) number.classList.add('current');
-            if (userAnswers[index] !== null) number.classList.add('answered');
-        });
-    }
-
-    function checkAnswer(questionIndex, selectedOption) {
-        const question = quizQuestions[questionIndex];
-        const isCorrect = selectedOption === question.answer;
-        feedback.textContent = isCorrect
-            ? `Correct! ${question.explanation}`
-            : `Incorrect. The correct answer is ${question.answer}) ${question.options[question.answer.charCodeAt(0) - 65]}. ${question.explanation}`;
-        feedback.className = isCorrect ? 'feedback correct' : 'feedback incorrect';
-        feedback.style.display = 'block';
-        document.querySelectorAll('.option').forEach(option => {
-            option.classList.remove('correct', 'incorrect');
-            if (option.dataset.value === question.answer) option.classList.add('correct');
-            else if (option.dataset.value === selectedOption && !isCorrect) option.classList.add('incorrect');
-        });
-        if (isCorrect && userAnswers[questionIndex] !== question.answer) {
-            score++;
-            updateScoreDisplay();
-        }
-        saveProgress();
-    }
-
-    function updateScoreDisplay() { scoreValue.textContent = score; }
-
-    function updateProgress() {
-        const answered = userAnswers.filter(a => a !== null).length;
-        answeredCountEl.textContent = answered;
-        answeredSummary.textContent = answered;
-        const percent = Math.round((answered / quizQuestions.length) * 100);
-        progressBar.style.width = percent + '%';
-        progressPercent.textContent = percent + '%';
-    }
-
-    nextBtn.addEventListener('click', () => {
-        if (currentQuestion < quizQuestions.length - 1) {
-            currentQuestion++;
-            loadQuestion(currentQuestion);
-        }
-    });
-    prevBtn.addEventListener('click', () => {
-        if (currentQuestion > 0) {
-            currentQuestion--;
-            loadQuestion(currentQuestion);
-        }
-    });
-
-    submitBtn.addEventListener('click', () => {
-        if (confirm("Are you sure you want to submit the quiz?")) {
-            calculateScore();
-            showResults();
-            quizSubmitted = true;
-            saveProgress();
-        }
-    });
-
-    function calculateScore() {
-        score = 0;
-        userAnswers.forEach((answer, i) => {
-            if (answer === quizQuestions[i].answer) score++;
-        });
-    }
-
-    function showResults() {
-        document.querySelector('.main-content').style.display = 'none';
-        document.querySelector('.quiz-info').style.display = 'none';
-        document.querySelector('.mode-toggle').style.display = 'none';
-        resultsContainer.style.display = 'block';
-
-        const attemptedCount = userAnswers.filter(a => a !== null).length;
-        const correctAnswers = userAnswers.filter((a, i) => a === quizQuestions[i].answer).length;
-        const incorrectAnswers = attemptedCount - correctAnswers;
-
-        finalScore.textContent = score;
-        attempted.textContent = attemptedCount;
-        correctCount.textContent = correctAnswers;
-        incorrectCount.textContent = incorrectAnswers;
-
-        const percentage = (score / quizQuestions.length) * 100;
-        if (percentage >= 70) scoreCircle.className = 'score-circle score-high';
-        else if (percentage >= 50) scoreCircle.className = 'score-circle score-medium';
-        else scoreCircle.className = 'score-circle score-low';
-
-        reviewQuestions.innerHTML = '';
-        quizQuestions.forEach((q, i) => {
-            const reviewItem = document.createElement('div');
-            reviewItem.className = 'review-item';
-            const questionElement = document.createElement('div');
-            questionElement.className = 'review-question';
-            questionElement.textContent = `${i + 1}. ${q.question}`;
-            reviewItem.appendChild(questionElement);
-            const userAnswer = userAnswers[i];
-            const isCorrect = userAnswer === q.answer;
-            const answerElement = document.createElement('div');
-            if (userAnswer !== null) {
-                answerElement.className = isCorrect ? 'review-answer review-correct' : 'review-answer review-incorrect';
-                answerElement.innerHTML = `
-                    <strong>Your answer:</strong> ${userAnswer}) ${q.options[userAnswer.charCodeAt(0) - 65]}
-                    ${!isCorrect ? `<br><strong>Correct answer:</strong> ${q.answer}) ${q.options[q.answer.charCodeAt(0) - 65]}` : ''}
-                    <br><strong>Explanation:</strong> ${q.explanation}`;
-            } else {
-                answerElement.className = 'review-answer';
-                answerElement.innerHTML = `
-                    <strong>Not attempted</strong>
-                    <br><strong>Correct answer:</strong> ${q.answer}) ${q.options[q.answer.charCodeAt(0) - 65]}
-                    <br><strong>Explanation:</strong> ${q.explanation}`;
-            }
-            reviewItem.appendChild(answerElement);
-            reviewQuestions.appendChild(reviewItem);
-        });
-    }
-
-    // Clear previous attempts
-    clearBtn.addEventListener('click', () => {
-        if (confirm("Clear all previous attempts? This cannot be undone.")) {
-            localStorage.removeItem('quizProgress');
-            newAttempt();
-        }
-    });
-
-    // New attempt button
-    resetBtn.addEventListener('click', () => {
-        if (confirm("Start a new attempt? Your current answers will be lost.")) {
-            newAttempt();
-        }
-    });
-
-    function newAttempt() {
-        currentQuestion = 0;
-        userAnswers = Array(quizQuestions.length).fill(null);
-        score = 0;
-        quizSubmitted = false;
-        resultsContainer.style.display = 'none';
-        document.querySelector('.main-content').style.display = 'flex';
-        document.querySelector('.quiz-info').style.display = 'flex';
-        document.querySelector('.mode-toggle').style.display = 'flex';
-        loadQuestion(currentQuestion);
-        updateScoreDisplay();
-        updateProgress();
-        saveProgress();
-    }
-
-    quizModeBtn.addEventListener('click', () => {
-        if (isLearningMode) {
-            isLearningMode = false;
-            quizModeBtn.classList.add('active');
-            learningModeBtn.classList.remove('active');
-            saveProgress();
-        }
-    });
-    learningModeBtn.addEventListener('click', () => {
-        if (!isLearningMode) {
-            isLearningMode = true;
-            learningModeBtn.classList.add('active');
-            quizModeBtn.classList.remove('active');
-            saveProgress();
-            if (userAnswers[currentQuestion] !== null) {
-                checkAnswer(currentQuestion, userAnswers[currentQuestion]);
-            }
-        }
-    });
-
-    themeToggle.addEventListener('click', () => {
-        darkMode = !darkMode;
-        if (darkMode) {
-            document.body.classList.add('dark-mode');
-            themeToggle.textContent = '☀️';
-        } else {
-            document.body.classList.remove('dark-mode');
-            themeToggle.textContent = '🌙';
-        }
-        saveProgress();
-    });
-
-    function saveProgress() {
-        const progress = { currentQuestion, userAnswers, score, isLearningMode, quizSubmitted, darkMode };
-        localStorage.setItem('quizProgress', JSON.stringify(progress));
-    }
-
-    window.addEventListener('load', initQuiz);
-
-    const toggleQuestions = document.getElementById("toggle-questions");
-const questionGrid = document.getElementById("question-numbers");
-
-toggleQuestions.addEventListener("click", () => {
-  questionGrid.classList.toggle("collapsed");
-  toggleQuestions.textContent = questionGrid.classList.contains("collapsed")
-    ? "Questions ▸"
-    : "Questions ▾";
+  if (examMode) startExamTimer(30 * 60);
 });
+
+// ================== Exam Timer ==================
+function startExamTimer(duration) {
+  let remaining = duration;
+  timerEl.style.display = "block";
+  timerInterval = setInterval(() => {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    timeLeftEl.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+    remaining--;
+    if (remaining < 0) {
+      clearInterval(timerInterval);
+      alert("⏰ Time’s up! Submitting your quiz.");
+      playSound();
+      calculateScore();
+      showResults();
+      quizSubmitted = true;
+    }
+  }, 1000);
+}
+function playSound() {
+  const audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+  audio.play();
+}
+
+// ================== Question Handling ==================
+function generateQuestionNumbers() {
+  questionNumbersContainer.innerHTML = "";
+  activeQuestions.forEach((_, idx) => {
+    const el = document.createElement("div");
+    el.className = "question-number";
+    el.textContent = idx + 1;
+    el.addEventListener("click", () => {
+      if (!quizSubmitted) {
+        currentQuestion = idx;
+        loadQuestion(currentQuestion);
+      }
+    });
+    questionNumbersContainer.appendChild(el);
+  });
+}
+function loadQuestion(index) {
+  if (index < 0 || index >= activeQuestions.length) return;
+  currentQuestion = index;
+  currentElement.textContent = index + 1;
+  const q = activeQuestions[index];
+  questionText.textContent = q.question;
+  optionsContainer.innerHTML = "";
+  q.options.forEach((opt, i) => {
+    const optEl = document.createElement("div");
+    optEl.className = "option";
+    optEl.textContent = `${String.fromCharCode(65 + i)}) ${opt}`;
+    optEl.dataset.value = String.fromCharCode(65 + i);
+    if (userAnswers[index] === optEl.dataset.value) optEl.classList.add("selected");
+    optEl.addEventListener("click", () => {
+      if (quizSubmitted) return;
+      document.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
+      optEl.classList.add("selected");
+      userAnswers[index] = optEl.dataset.value;
+      updateQuestionNumbers();
+      updateProgress();
+      if (isLearningMode) checkAnswer(index, optEl.dataset.value);
+    });
+    optionsContainer.appendChild(optEl);
+  });
+  prevBtn.disabled = index === 0;
+  nextBtn.disabled = index === activeQuestions.length - 1;
+  updateQuestionNumbers();
+  feedback.style.display = "none";
+}
+function updateQuestionNumbers() {
+  const qs = document.querySelectorAll(".question-number");
+  qs.forEach((el, i) => {
+    el.classList.remove("current", "answered");
+    if (i === currentQuestion) el.classList.add("current");
+    if (userAnswers[i] !== null) el.classList.add("answered");
+  });
+}
+function checkAnswer(i, selected) {
+  const q = activeQuestions[i];
+  const correct = selected === q.answer;
+  feedback.textContent = correct
+    ? `Correct! ${q.explanation}`
+    : `Incorrect. The correct answer is ${q.answer}) ${q.options[q.answer.charCodeAt(0) - 65]}. ${q.explanation}`;
+  feedback.className = correct ? "feedback correct" : "feedback incorrect";
+  feedback.style.display = "block";
+  document.querySelectorAll(".option").forEach(o => {
+    o.classList.remove("correct", "incorrect");
+    if (o.dataset.value === q.answer) o.classList.add("correct");
+    else if (o.dataset.value === selected && !correct) o.classList.add("incorrect");
+  });
+  if (correct && userAnswers[i] !== q.answer) {
+    score++;
+    updateScoreDisplay();
+  }
+}
+function updateScoreDisplay() {
+  scoreValue.textContent = score;
+}
+function updateProgress() {
+  const answered = userAnswers.filter(a => a !== null).length;
+  answeredCountEl.textContent = answered;
+  answeredSummary.textContent = answered;
+  const pct = Math.round((answered / activeQuestions.length) * 100);
+  progressBar.style.width = pct + "%";
+  progressPercent.textContent = pct + "%";
+}
+
+// ================== Navigation ==================
+nextBtn.addEventListener("click", () => {
+  if (currentQuestion < activeQuestions.length - 1) {
+    currentQuestion++;
+    loadQuestion(currentQuestion);
+  }
+});
+prevBtn.addEventListener("click", () => {
+  if (currentQuestion > 0) {
+    currentQuestion--;
+    loadQuestion(currentQuestion);
+  }
+});
+submitBtn.addEventListener("click", () => {
+  if (confirm("Are you sure you want to submit?")) {
+    calculateScore();
+    showResults();
+    quizSubmitted = true;
+  }
+});
+
+// ================== Results ==================
+function calculateScore() {
+  score = 0;
+  userAnswers.forEach((a, i) => {
+    if (a === activeQuestions[i].answer) score++;
+  });
+}
+function showResults() {
+  document.querySelector(".main-content").style.display = "none";
+  document.querySelector(".quiz-info").style.display = "none";
+  document.querySelector(".mode-toggle").style.display = "none";
+  resultsContainer.style.display = "block";
+  if (timerInterval) clearInterval(timerInterval);
+
+  const attemptedCount = userAnswers.filter(a => a !== null).length;
+  const correct = userAnswers.filter((a, i) => a === activeQuestions[i].answer).length;
+  const incorrect = attemptedCount - correct;
+  let displayScore = score;
+  if (examMode) {
+    displayScore = Math.round((score / chosenCount) * 70);
+    totalQuestions.textContent = "70";
+  } else totalQuestions.textContent = chosenCount;
+
+  finalScore.textContent = displayScore;
+  attempted.textContent = attemptedCount;
+  correctCount.textContent = correct;
+  incorrectCount.textContent = incorrect;
+
+  const pct = (examMode ? displayScore / 70 : score / chosenCount) * 100;
+  scoreCircle.className =
+    "score-circle " + (pct >= 70 ? "score-high" : pct >= 50 ? "score-medium" : "score-low");
+
+  reviewQuestions.innerHTML = "";
+  activeQuestions.forEach((q, i) => {
+    const item = document.createElement("div");
+    item.className = "review-item";
+    const qEl = document.createElement("div");
+    qEl.className = "review-question";
+    qEl.textContent = `${i + 1}. ${q.question}`;
+    item.appendChild(qEl);
+    const aEl = document.createElement("div");
+    const ua = userAnswers[i];
+    const correct = ua === q.answer;
+    if (ua !== null) {
+      aEl.className = correct ? "review-answer review-correct" : "review-answer review-incorrect";
+      aEl.innerHTML = `<strong>Your answer:</strong> ${ua}) ${q.options[ua.charCodeAt(0) - 65]}
+        ${!correct ? `<br><strong>Correct answer:</strong> ${q.answer}) ${q.options[q.answer.charCodeAt(0) - 65]}` : ""}
+        <br><strong>Explanation:</strong> ${q.explanation}`;
+    } else {
+      aEl.className = "review-answer";
+      aEl.innerHTML = `<strong>Not attempted</strong><br><strong>Correct answer:</strong> ${q.answer}) ${q.options[q.answer.charCodeAt(0) - 65]}
+        <br><strong>Explanation:</strong> ${q.explanation}`;
+    }
+    item.appendChild(aEl);
+    reviewQuestions.appendChild(item);
+  });
+}
+
+// ================== Clear / Reset ==================
+clearBtn.addEventListener("click", () => {
+  if (confirm("Clear all previous attempts?")) {
+    newAttempt();
+  }
+});
+resetBtn.addEventListener("click", () => {
+  if (confirm("Start new attempt?")) {
+    newAttempt();
+  }
+});
+function newAttempt() {
+  localStorage.removeItem("quizState");
+  score = 0;
+  currentQuestion = 0;
+  userAnswers = [];
+  activeQuestions = [];
+  quizSubmitted = false;
+  examMode = false;
+  clearInterval(timerInterval);
+  document.getElementById("timer").style.display = "none";
+
+  resultsContainer.style.display = "none";
+  document.querySelector(".main-content").style.display = "none";
+  document.querySelector(".quiz-info").style.display = "none";
+  document.querySelector(".mode-toggle").style.display = "none";
+  document.querySelector(".progress-wrap").style.display = "none";
+  document.getElementById("start-screen").style.display = "block";
+}
+
+// ================== Mode Toggle / Theme ==================
+quizModeBtn.addEventListener("click", () => {
+  if (isLearningMode) {
+    isLearningMode = false;
+    quizModeBtn.classList.add("active");
+    learningModeBtn.classList.remove("active");
+  }
+});
+learningModeBtn.addEventListener("click", () => {
+  if (!isLearningMode) {
+    isLearningMode = true;
+    learningModeBtn.classList.add("active");
+    quizModeBtn.classList.remove("active");
+    if (userAnswers[currentQuestion] !== null) {
+      checkAnswer(currentQuestion, userAnswers[currentQuestion]);
+    }
+  }
+});
+themeToggle.addEventListener("click", () => {
+  darkMode = !darkMode;
+  if (darkMode) {
+    document.body.classList.add("dark-mode");
+    themeToggle.textContent = "☀️";
+  } else {
+    document.body.classList.remove("dark-mode");
+    themeToggle.textContent = "🌙";
+  }
+});
+
+// ================== Collapse Question Numbers ==================
+document.getElementById("toggle-questions").addEventListener("click", () => {
+  questionNumbersContainer.classList.toggle("collapsed");
+  document.getElementById("toggle-questions").textContent =
+    questionNumbersContainer.classList.contains("collapsed") ? "Questions ▸" : "Questions ▾";
+});
+
+// ================== Save / Load State ==================
+function saveState() {
+  const state = {
+    currentQuestion,
+    userAnswers,
+    score,
+    isLearningMode,
+    quizSubmitted,
+    darkMode,
+    activeQuestions,
+    chosenCount,
+    examMode,
+    timeRemaining: getRemainingTime()
+  };
+  localStorage.setItem("quizState", JSON.stringify(state));
+}
+function getRemainingTime() {
+  if (!examMode || !timerInterval) return null;
+  const [m, s] = timeLeftEl.textContent.split(":").map(Number);
+  return m * 60 + s;
+}
+function loadState() {
+  const saved = localStorage.getItem("quizState");
+  if (!saved) return false;
+  const state = JSON.parse(saved);
+
+  currentQuestion = state.currentQuestion || 0;
+  userAnswers = state.userAnswers || [];
+  score = state.score || 0;
+  isLearningMode = state.isLearningMode || false;
+  quizSubmitted = state.quizSubmitted || false;
+  darkMode = state.darkMode || false;
+  activeQuestions = state.activeQuestions || quizQuestions;
+  chosenCount = state.chosenCount || activeQuestions.length;
+  examMode = state.examMode || false;
+
+  // Dark mode restore
+  if (darkMode) {
+    document.body.classList.add("dark-mode");
+    themeToggle.textContent = "☀️";
+  } else {
+    document.body.classList.remove("dark-mode");
+    themeToggle.textContent = "🌙";
+  }
+
+  // UI setup
+  document.getElementById("start-screen").style.display = "none";
+  document.querySelector(".quiz-info").style.display = "flex";
+  document.querySelector(".main-content").style.display = "flex";
+  document.querySelector(".progress-wrap").style.display = "block";
+  document.querySelector(".mode-toggle").style.display = examMode ? "none" : "flex";
+
+  totalElement.textContent = chosenCount;
+  maxScore.textContent = chosenCount;
+  totalQuestions.textContent = chosenCount;
+  totalAnsweredEl.textContent = chosenCount;
+
+  generateQuestionNumbers();
+  loadQuestion(currentQuestion);
+  updateProgress();
+  updateScoreDisplay();
+
+  // Resume exam timer
+  if (examMode && !quizSubmitted && state.timeRemaining) {
+    document.getElementById("timer").style.display = "block";
+    startExamTimer(state.timeRemaining);
+  }
+
+  if (quizSubmitted) showResults();
+
+  return true;
+}
+
+// Hook into lifecycle
+window.addEventListener("beforeunload", saveState);
+window.addEventListener("load", () => {
+  const saved = localStorage.getItem("quizState");
+
+  if (saved) {
+    const state = JSON.parse(saved);
+
+    // Only restore if quiz was started (activeQuestions exist)
+    if (state.activeQuestions && state.activeQuestions.length > 0) {
+      loadState();
+    } else {
+      // First visit or no progress → show start screen
+      document.getElementById("start-screen").style.display = "block";
+      document.querySelector(".quiz-info").style.display = "none";
+      document.querySelector(".main-content").style.display = "none";
+      document.querySelector(".progress-wrap").style.display = "none";
+      document.querySelector(".mode-toggle").style.display = "none";
+      resultsContainer.style.display = "none";
+    }
+  } else {
+    // No saved state → show start screen
+    document.getElementById("start-screen").style.display = "block";
+    document.querySelector(".quiz-info").style.display = "none";
+    document.querySelector(".main-content").style.display = "none";
+    document.querySelector(".progress-wrap").style.display = "none";
+    document.querySelector(".mode-toggle").style.display = "none";
+    resultsContainer.style.display = "none";
+  }
+});
+
+
 
